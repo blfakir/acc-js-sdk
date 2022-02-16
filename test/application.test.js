@@ -100,6 +100,8 @@ describe('Schemas', function() {
             expect(email.name).toBe("@email");
             expect(email.type).toBe("string");
             expect(email.length).toBe(3);
+            expect(email.isAdvanced()).toBeFalsy();
+            expect(email.isMappedAsXML()).toBeFalsy();
         });
 
         it("Should not find inexistant attribute", () => {
