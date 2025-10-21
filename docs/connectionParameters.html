@@ -118,7 +118,16 @@ const connectionParameters = sdk.ConnectionParameters.ofUserAndPassword(
             <td>enableRequestIdHeader</td>
             <td>boolean</td>
             <td>Enable the request ID header for SOAP API calls</td>
+    </tr>
+    <tr>
+            <td>useServerInfoCache</td>
+            <td>boolean</td>
+            <td>Enables caching of server info and installed packages. Defaults to false</td>
+        </tr>
+        <tr>
+            <td>useServerInfoCacheTTL</td>
+            <td>number</td>
+            <td>The TTL (in milliseconds) for the server info cache. Defaults to 1 day</td>
         </tr>
     </tbody>
 </table>
-

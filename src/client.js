@@ -30,6 +30,7 @@ governing permissions and limitations under the License.
   const DomUtil = require('./domUtil.js').DomUtil;
   const MethodCache = require('./methodCache.js').MethodCache;
   const OptionCache = require('./optionCache.js').OptionCache;
+  const { Cache } = require('./cache.js');
   const CacheRefresher = require('./cacheRefresher.js').CacheRefresher;
   const request = require('./transport.js').request;
   const { Application, newSchema } = require('./application.js');
@@ -296,6 +297,7 @@ governing permissions and limitations under the License.
     * @property {number|function} entityCacheTTL - The TTL (in milliseconds) after which cached XTK entities expire. Can also be a function `(entityType, entityFullName) => number` returning the TTL in ms for a given entity, allowing e.g. per-namespace TTLs for schemas. 0 means no caching, null/undefined default to 5 minutes, and a negative or non-number value throws.
     * @property {number|function} methodCacheTTL - The TTL (in milliseconds) after which cached XTK methods expire. Can also be a function `(schemaId, methodName) => number` returning the TTL in ms for a given method. 0 means no caching, null/undefined default to 5 minutes, and a negative or non-number value throws.
     * @property {number|function} optionCacheTTL - The TTL (in milliseconds) after which cached XTK options expire. Can also be a function `(name) => number` returning the TTL in ms for a given option. 0 means no caching, null/undefined default to 5 minutes, and a negative or non-number value throws.
+    * @property {number} serverInfoCacheTTL - The TTL (in milliseconds) for the server info cache. Defaults to 1 day
     * @property {boolean} traceAPICalls - Activates the tracing of all API calls
     * @property {Utils.Transport} transport - Overrides the transport (i.e. HTTP layer)
     * @property {boolean} noStorage - De-activate using of local storage. By default, and in addition to in-memory cache, entities, methods, and options are also persisted in local storage if there is one.
@@ -310,6 +312,7 @@ governing permissions and limitations under the License.
     * @property {string} cacheRootKey - "default" or "none" - determine the prefix to use for the keys in the caches of schemas, options, etc.
     * @property {string} instanceKey - an optional value to override the instance key which is used for the caches of schemas, options, etc.
     * @property {boolean} enableRequestIdHeader - an optional value to enable the request ID header for SOAP API calls
+    * @property {boolean} useServerInfoCache - Enables caching of server info and installed packages. Defaults to false
     * @memberOf Campaign
  */
 
@@ -356,6 +359,8 @@ governing permissions and limitations under the License.
       this._options.methodCacheTTL = options.methodCacheTTL ?? 1000*300; // 5 mins (or a function, see ConnectionOptions)
       this._options.optionCacheTTL = options.optionCacheTTL ?? 1000*300; // 5 mins (or a function, see ConnectionOptions)
       this._options.traceAPICalls = options.traceAPICalls === null || options.traceAPICalls ? !!options.traceAPICalls : false;
+      this._options.useServerInfoCacheTTL = options.useServerInfoCacheTTL || 1000 * 60 * 60 * 24; // 1 day
+      this._options.useServerInfoCache = options.useServerInfoCache || false;
       this._options.transport = options.transport || request;
 
       this._endpoint = endpoint;
@@ -847,6 +852,7 @@ governing permissions and limitations under the License.
       this._secretKeyCipher = undefined;
 
       this._storage = connectionParameters._options._storage;
+      this._useServerInfoCache = connectionParameters._options.useServerInfoCache;
 
       var instanceKey = connectionParameters._options.instanceKey;
       if (!instanceKey)
@@ -876,6 +882,7 @@ governing permissions and limitations under the License.
       this._methodCache = new MethodCache(this._storage, `${rootKey}MethodCache`, connectionParameters._options.methodCacheTTL);
       this._optionCache = new OptionCache(this._storage, `${rootKey}OptionCache`, connectionParameters._options.optionCacheTTL);
       this._optionCacheRefresher = new CacheRefresher(this._optionCache, this, "xtk:option", `${rootKey}OptionCache`);
+      this._serverInfoCache = new Cache(this._storage, `${rootKey}ServerInfoCache`, connectionParameters._options.useServerInfoCacheTTL);
       this.NLWS = new Proxy(this, clientHandler());
 
       this._transport = connectionParameters._options.transport;
@@ -1114,6 +1121,7 @@ governing permissions and limitations under the License.
       this._trackCacheStats('entityCache', this._entityCache);
       this._trackCacheStats('optionCache', this._optionCache);
       this._trackCacheStats('methodCache', this._methodCache);
+      this._trackCacheStats('serverInfoCache', this._serverInfoCache);
     }
 
     _trackCacheStats(name, cache) {
@@ -1553,7 +1561,7 @@ governing permissions and limitations under the License.
       delete this._observabilityContext.session;
     }
 
-    _updateSessionInfo(sessionInfo, soapCall) {
+    async _updateSessionInfo(sessionInfo, soapCall) {
       this._sessionInfo = sessionInfo;
       this._installedPackages = {};
       const userInfo = DomUtil.findElement(sessionInfo, "userInfo");
@@ -1561,13 +1569,27 @@ governing permissions and limitations under the License.
         throw CampaignException.UNEXPECTED_SOAP_RESPONSE(soapCall, `userInfo structure missing`);
       let pack = DomUtil.getFirstChildElement(userInfo, "installed-package");
       while (pack) {
-        const name = `${DomUtil.getAttributeAsString(pack, "namespace")}:${DomUtil.getAttributeAsString(pack, "name")}`;
-        this._installedPackages[name] = name;
+        const namespace = DomUtil.getAttributeAsString(pack, "namespace");
+        const name = DomUtil.getAttributeAsString(pack, "name");
+        const fullName = `${namespace}:${name}`;
+        this._installedPackages[fullName] = fullName;
         pack = DomUtil.getNextSiblingElement(pack);
       }
     }
 
     async _fetchSessionInfo() {
+      if (this._useServerInfoCache) {
+        try {
+          const sessionInfoJson = await this._serverInfoCache.get("sessionInfo");
+          if (sessionInfoJson) {
+            const sessionInfo = DomUtil.fromJSON("sessionInfo", sessionInfoJson, "SimpleJson");
+            return sessionInfo.documentElement;
+          }
+        } catch (error) {
+          console.error("Error parsing sessionInfo from cache:", error);
+          this._serverInfoCache.remove("sessionInfo");
+        }
+      }
       const userInfoPromise = this.NLWS.xml.xtkSession.getUserInfo();
       const testPromise = this.test();
       const all = Promise.all([userInfoPromise, testPromise]);
@@ -1596,6 +1618,10 @@ governing permissions and limitations under the License.
       if (!buildNumber)
         throw CampaignException.UNEXPECTED_SOAP_RESPONSE(undefined, `buildNumber structure missing for both /r/test and NmsServer_LastPostUpgrade option`);
       serverInfo.setAttribute("buildNumber", buildNumber);
+      if (this._useServerInfoCache) {
+        const sessionInfoJson = DomUtil.toJSON(sessionInfo, "SimpleJson");
+        await this._serverInfoCache.put("sessionInfo", sessionInfoJson);
+      }
       return sessionInfoRoot;
     }
 
@@ -1661,8 +1687,8 @@ governing permissions and limitations under the License.
           that._onLogon();
           return Promise.resolve();
         }
-        return that._fetchSessionInfo().then((sessionInfo) => {
-          that._updateSessionInfo(sessionInfo, undefined);
+        return that._fetchSessionInfo().then(async (sessionInfo) => {
+          await that._updateSessionInfo(sessionInfo, undefined);
           that._onLogon();
         });
       }
@@ -1688,10 +1714,10 @@ governing permissions and limitations under the License.
           const bearerToken = credentials._bearerToken;
           soapCall.writeString("bearerToken", bearerToken);
         }
-        return this._makeSoapCall(soapCall).then(function() {
+        return this._makeSoapCall(soapCall).then(async function() {
           const sessionToken = soapCall.getNextString();
           const sessionInfo = soapCall.getNextDocument();
-          that._updateSessionInfo(sessionInfo, soapCall);
+          await that._updateSessionInfo(sessionInfo, soapCall);
           const securityToken = soapCall.getNextString();
           soapCall.checkNoMoreArgs();
           // Sanity check: we should have both a session token and a security token.
@@ -1830,13 +1856,21 @@ governing permissions and limitations under the License.
     }
 
     /**
-     * Clears all caches (options, methods, entities)
+     * Clears the server info cache
+     */
+    async clearServerInfoCache() {
+      await this._serverInfoCache.clear();
+    }
+
+    /**
+     * Clears all caches (options, methods, entities, server info)
      */
     async clearAllCaches() {
       return Promise.all([
         this.clearEntityCache(),
         this.clearMethodCache(),
         this.clearOptionCache(),
+        this.clearServerInfoCache(),
       ]);
     }
 
