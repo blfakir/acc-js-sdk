@@ -2487,7 +2487,7 @@ describe('ACC Client', function () {
             client._transport = jest.fn();
             client._transport.mockReturnValueOnce(Mock.BEARER_LOGON_RESPONSE);
             const result = client.logon();
-            expect(result instanceof Promise).toBe(true);
+            expect(result).toBeInstanceOf(Promise);
             await result;
         })
 
@@ -2496,7 +2496,7 @@ describe('ACC Client', function () {
             const client = await sdk.init(connectionParameters);
             client._transport = jest.fn();
             const result = client.logon();
-            expect(result instanceof Promise).toBe(true);
+            expect(result).toBeInstanceOf(Promise);
             try {
                 await result;
             } catch(ex) { /* result or exception is not handled */ }
@@ -2507,7 +2507,7 @@ describe('ACC Client', function () {
             const client = await sdk.init(connectionParameters);
             client._transport = jest.fn();
             const result = client.logon();
-            expect(result instanceof Promise).toBe(true);
+            expect(result).toBeInstanceOf(Promise);
             await result;
         })
 
@@ -2516,7 +2516,7 @@ describe('ACC Client', function () {
             const client = await sdk.init(connectionParameters);
             client._transport = jest.fn();
             const result = client.logon();
-            expect(result instanceof Promise).toBe(true);
+            expect(result).toBeInstanceOf(Promise);
             await result;
         })
 
@@ -2525,7 +2525,7 @@ describe('ACC Client', function () {
             const client = await sdk.init(connectionParameters);
             client._transport = jest.fn();
             const result = client.logon();
-            expect(result instanceof Promise).toBe(true);
+            expect(result).toBeInstanceOf(Promise);
             await result;
         })
     })
@@ -2560,7 +2560,7 @@ describe('ACC Client', function () {
 
     describe("Connection options", () => {
         it("Should set options cache TTL", async () => {
-           const client = await Mock.makeClient({ optionCacheTTL: -1 });
+           const client = await Mock.makeClient({ optionCacheTTL: 0 });
            client._transport.mockReturnValueOnce(Mock.LOGON_RESPONSE);
            client._transport.mockReturnValueOnce(Mock.GET_XTK_SESSION_SCHEMA_RESPONSE);
            await client.NLWS.xtkSession.logon();

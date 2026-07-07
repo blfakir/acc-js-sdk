@@ -169,14 +169,20 @@ governing permissions and limitations under the License.
    * 
    * @param {Storage} storage is an optional Storage object, such as localStorage or sessionStorage. This object will be wrapped into a SafeStorage object to ensure access is safe and will not throw any exceptions
    * @param {string} rootKey is an optional root key to use for the storage object
-   * @param {number} ttl is the TTL for objects in ms. Defaults to 5 mins
+   * @param {number|function} ttl is the TTL for objects in ms. Can also be a function taking the same key arguments as 'get'/'put'
+   *                          and returning the TTL in ms. Contract, for both the static value and the function's return value:
+   *                          a positive number is the TTL in ms, 0 means no caching (entries expire immediately), null/undefined
+   *                          defaults to 5 mins, and a negative number or any non-number value (NaN, Infinity, string, etc.) is a
+   *                          programming error and throws
    * @param {function} makeKeyFn is an optional function which will generate a key for objects in the cache. It's passed the arguments of the cache 'get' function
    * @param {function} serDeser serializarion & deserialization function. First parameter is the object or value to serialize
    *                            or deserialize, and second parameter is true for serialization or false for deserialization
    */
     constructor(storage, rootKey, ttl, makeKeyFn, serDeser) {
       this._storage = new SafeStorage(storage, rootKey, serDeser);
-      this._ttl = ttl || 1000*300;
+      // A static TTL is validated eagerly so a misconfiguration fails fast (at construction) rather than
+      // lazily on the first 'put'. A function TTL can only be validated when it is called (see _resolveTTL).
+      this._ttl = typeof ttl === "function" ? ttl : this._normalizeTTL(ttl);
       this._makeKeyFn = makeKeyFn || ((x) => x);
       this._cache = {};
       // timestamp at which the cache was last cleared
@@ -270,17 +276,51 @@ governing permissions and limitations under the License.
     }
 
     /**
-   * Put a value from the cache
-   * @param {*} key the key or keys of the value to retrieve
-   * @param {*} value the value to cache
-   * @returns {CachedObject} a cached object containing the cached value
-   */
+     * Validates a TTL value against the cache TTL contract and returns the effective TTL to use. Applies both to a
+     * static TTL (validated at construction) and to the result of a TTL function (validated at 'put' time):
+     * - a positive number is the TTL, in ms
+     * - 0 means no caching (the entry expires immediately)
+     * - null or undefined default to the 5 min default TTL
+     * - a negative number, NaN, Infinity, or any non-number type is a programming error and throws
+     *
+     * @param {*} ttl the TTL value to validate (a static value, or the result of a TTL function)
+     * @returns {number} the effective TTL in ms
+     */
+    _normalizeTTL(ttl) {
+      if (ttl === null || ttl === undefined) return 1000*300;
+      if (!Number.isFinite(ttl) || ttl < 0)
+        throw new Error(`Invalid TTL value '${ttl}': expected a non-negative number, null, or undefined`);
+      return ttl;
+    }
+
+    /**
+     * Returns the TTL (in ms) to use for the entry currently being put in the cache. If the TTL was set as a
+     * function, it is called with the same key arguments as 'put' (i.e. all arguments but the value being cached)
+     * and its result is validated and used instead of the static TTL. A static TTL is already validated at
+     * construction time and returned as-is.
+     * @returns {number} TTL in ms
+     */
+    _resolveTTL() {
+      const ttl = this._ttl;
+      if (typeof ttl === "function") {
+        const keyArgs = Array.prototype.slice.call(arguments, 0, arguments.length - 1);
+        return this._normalizeTTL(ttl.apply(this, keyArgs));
+      }
+      return ttl;
+    }
+
+    /**
+     * Put a value from the cache
+     * @param {*} key the key or keys of the value to retrieve
+     * @param {*} value the value to cache
+     * @returns {CachedObject} a cached object containing the cached value
+     */
     async put() {
       this._stats.writes = this._stats.writes + 1;
       const value = arguments[arguments.length -1];
       const key = this._makeKeyFn.apply(this, arguments);
       const now = Date.now();
-      const expiresAt = now + this._ttl;
+      const expiresAt = now + this._resolveTTL.apply(this, arguments);
       const cached = new CachedObject(value, now, expiresAt);
       this._cache[key] = cached;
       await this._save(key, cached);

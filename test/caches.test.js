@@ -35,11 +35,24 @@ describe('Caches', function() {
             expect(cache._stats).toMatchObject({ reads: 1, writes: 1, memoryHits: 1, storageHits: 0 });
         })
 
-        it("Should expires after TTL", async () => {
-            const cache = new Cache(undefined, undefined, -1);    // negative TTL => will immediately expire
+        it("Should expire immediately when TTL is 0", async () => {
+            const cache = new Cache(undefined, undefined, 0);
             await cache.put("Hello", "World");
             await expect(cache.get("Hello")).resolves.toBeUndefined();
             expect(cache._stats).toMatchObject({ reads: 1, writes: 1, memoryHits: 0, storageHits: 0 });
+        })
+
+        it("Should throw at construction when a static TTL is negative", () => {
+            expect(() => new Cache(undefined, undefined, -1)).toThrow();
+        })
+
+        it("Should throw at construction when a static TTL is NaN or Infinity", () => {
+            expect(() => new Cache(undefined, undefined, NaN)).toThrow();
+            expect(() => new Cache(undefined, undefined, Infinity)).toThrow();
+        })
+
+        it("Should throw at construction when a static TTL is a non-number type", () => {
+            expect(() => new Cache(undefined, undefined, "not-a-number")).toThrow();
         })
 
         it("Should support custom key function", async () => {
@@ -48,6 +61,37 @@ describe('Caches', function() {
             await expect(cache.get("key-part-1")).resolves.toBeUndefined();
             await expect(cache.get("key-part-2")).resolves.toBeUndefined();
             await expect(cache.get("key-part-1", "key-part-2")).resolves.toBe("value");
+        })
+
+        it("Should support a TTL function keyed off the put arguments", async () => {
+            const ttlFn = (key) => key === "Hello" ? 1000 : 2000;
+            const cache = new Cache(undefined, undefined, ttlFn);
+            await cache.put("Hello", "World");
+            const cachedHello = cache._cache["Hello"];
+            expect(cachedHello.expiresAt - cachedHello.cachedAt).toBe(1000);
+            await cache.put("Hi", "World");
+            const cachedHi = cache._cache["Hi"];
+            expect(cachedHi.expiresAt - cachedHi.cachedAt).toBe(2000);
+        })
+
+        it("Should fall back to default TTL when TTL function returns null or undefined", async () => {
+            const ttlFn = () => undefined;
+            const cache = new Cache(undefined, undefined, ttlFn);
+            await cache.put("Hello", "World");
+            const cached = cache._cache["Hello"];
+            expect(cached.expiresAt - cached.cachedAt).toBe(1000*300);
+        })
+
+        it("Should throw when TTL function returns a non-number", async () => {
+            const ttlFn = () => "not-a-number";
+            const cache = new Cache(undefined, undefined, ttlFn);
+            await expect(cache.put("Hello", "World")).rejects.toThrow();
+        })
+
+        it("Should throw when TTL function returns a negative number", async () => {
+            const ttlFn = () => -1;
+            const cache = new Cache(undefined, undefined, ttlFn);
+            await expect(cache.put("Hello", "World")).rejects.toThrow();
         })
 
         it("Should clear cache", async () => {
@@ -98,6 +142,34 @@ describe('Caches', function() {
             const persist = await cache.get("xtk:schema", "xtk:persist");
             expect(persist).not.toBeNull();
             expect(persist.getAttribute("name")).toBe("persist");
+        });
+
+        it("Should use entityCacheTTL as a function of (entityType, entityFullName)", async () => {
+            const ttlFn = (entityType, entityFullName) => {
+                if (entityType !== "xtk:schema") return undefined;
+                const namespace = entityFullName.split(":")[0];
+                return namespace === "nms" ? 1000 : 9999;
+            };
+            const cache = new XtkEntityCache(undefined, undefined, ttlFn);
+            const schema = DomUtil.parse(`<schema namespace="nms" name="recipient"><element name="recipient"/></schema>`);
+            await cache.put("xtk:schema", "nms:recipient", schema.documentElement);
+            const cached = cache._cache["xtk:schema|nms:recipient"];
+            expect(cached.expiresAt - cached.cachedAt).toBe(1000);
+        });
+
+        it("Should throw when entityCacheTTL function returns a non-number", async () => {
+            const ttlFn = () => "not-a-number";
+            const cache = new XtkEntityCache(undefined, undefined, ttlFn);
+            const schema = DomUtil.parse(`<schema namespace="nms" name="recipient"><element name="recipient"/></schema>`);
+            await expect(cache.put("xtk:schema", "nms:recipient", schema.documentElement)).rejects.toThrow();
+        });
+
+        it("Should let the TTL function decide TTL for non-schema entity types too", async () => {
+            const ttlFn = (entityType) => entityType === "xtk:srcSchema" ? 1000 : undefined;
+            const cache = new XtkEntityCache(undefined, undefined, ttlFn);
+            await cache.put("xtk:srcSchema", "nms:recipient", "$$entity$$");
+            const cached = cache._cache["xtk:srcSchema|nms:recipient"];
+            expect(cached.expiresAt - cached.cachedAt).toBe(1000);
         });
 
     });
@@ -464,7 +536,7 @@ describe('Caches', function() {
             const delegate = {
                 getItem: jest.fn(async (key) => Promise.resolve(map[key]) ),
                 setItem: jest.fn(async (key, value) => {
-                    return new Promise((resolve, reject) => {
+                    return new Promise((resolve) => {
                         map[key] = value;
                         resolve(value);
                     });

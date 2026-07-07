@@ -37,17 +37,17 @@ const connectionParameters = sdk.ConnectionParameters.ofUserAndPassword(
         <tr>
             <td>entityCacheTTL</td>
             <td>300000</td>
-            <td> The TTL (in milliseconds) for the xtk entity cache</td>
+            <td> The TTL (in milliseconds) for the xtk entity cache. Can also be a function <code>(entityType: string, entityFullName: string) =&gt; number</code> returning the TTL in milliseconds for a given entity, e.g. to decode the namespace from <code>entityFullName</code> and use a per-namespace TTL for schemas. Contract, for both a static value and a function's return value: a positive number is the TTL in ms, <code>0</code> disables caching, <code>null</code>/<code>undefined</code> default to 5 minutes, and a negative or non-number value throws.</td>
         </tr>
         <tr>
             <td>methodCacheTTL</td>
             <td>300000</td>
-            <td> The TTL (in milliseconds) for the xtk method cache</td>
+            <td> The TTL (in milliseconds) for the xtk method cache. Can also be a function <code>(schemaId: string, methodName: string) =&gt; number</code> returning the TTL in milliseconds for a given method. Contract, for both a static value and a function's return value: a positive number is the TTL in ms, <code>0</code> disables caching, <code>null</code>/<code>undefined</code> default to 5 minutes, and a negative or non-number value throws.</td>
         </tr>
         <tr>
             <td>optionCacheTTL</td>
             <td>300000</td>
-            <td> The TTL (in milliseconds) for the xtk option cache</td>
+            <td> The TTL (in milliseconds) for the xtk option cache. Can also be a function <code>(name: string) =&gt; number</code> returning the TTL in milliseconds for a given option. Contract, for both a static value and a function's return value: a positive number is the TTL in ms, <code>0</code> disables caching, <code>null</code>/<code>undefined</code> default to 5 minutes, and a negative or non-number value throws.</td>
         </tr>
         <tr>
             <td>traceAPICalls</td>

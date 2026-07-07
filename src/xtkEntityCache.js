@@ -40,7 +40,11 @@ governing permissions and limitations under the License.
      * 
      * @param {Storage} storage is an optional Storage object, such as localStorage or sessionStorage
      * @param {string} rootKey is an optional root key to use for the storage object
-     * @param {number} ttl is the TTL for objects in ms. Defaults to 5 mins
+     * @param {number|function} ttl is the TTL for objects in ms. Can also be a function
+     *                           `(entityType, entityFullName) => number` returning the TTL in ms for a given entity
+     *                           (e.g. to decode the namespace out of entityFullName and use a per-namespace TTL for
+     *                           schemas). See {@link Cache#_resolveTTL} for the full contract: 0 means no caching,
+     *                           null/undefined default to 5 mins, and a negative or non-number value throws.
      */
     constructor(storage, rootKey, ttl) {
       super(storage, rootKey, ttl, (entityType, entityFullName) => entityType + "|" + entityFullName, (item, serDeser) => {
