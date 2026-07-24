@@ -281,14 +281,14 @@ governing permissions and limitations under the License.
      * - a positive number is the TTL, in ms
      * - 0 means no caching (the entry expires immediately)
      * - null or undefined default to the 5 min default TTL
-     * - a negative number, NaN, Infinity, or any non-number type is a programming error and throws
+     * - NaN, Infinity, or any non-number type is a programming error and throws
      *
      * @param {*} ttl the TTL value to validate (a static value, or the result of a TTL function)
      * @returns {number} the effective TTL in ms
      */
     _normalizeTTL(ttl) {
       if (ttl === null || ttl === undefined) return 1000*300;
-      if (!Number.isFinite(ttl) || ttl < 0)
+      if (!Number.isFinite(ttl))
         throw new Error(`Invalid TTL value '${ttl}': expected a non-negative number, null, or undefined`);
       return ttl;
     }

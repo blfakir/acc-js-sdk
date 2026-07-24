@@ -58,7 +58,7 @@ title: Change Log
       <li><code>methodCacheTTL</code>: <code>(schemaId, methodName) =&gt; number</code></li>
       <li><code>optionCacheTTL</code>: <code>(name) =&gt; number</code></li>
     </ul>
-    Contract, for both a static value and a function's return value: a positive number is the TTL in ms, 0 disables caching for the entry, null/undefined default to 5 minutes, and a negative number or non-number value throws. Fully backward compatible — passing a plain number keeps existing behavior.
+    Contract, for both a static value and a function's return value: a positive number is the TTL in ms, 0 disables caching for the entry, null/undefined default to 5 minutes, and a non-number value throws. Fully backward compatible — passing a plain number keeps existing behavior.
   </li>
 </section>
 

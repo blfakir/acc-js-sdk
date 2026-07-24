@@ -42,10 +42,6 @@ describe('Caches', function() {
             expect(cache._stats).toMatchObject({ reads: 1, writes: 1, memoryHits: 0, storageHits: 0 });
         })
 
-        it("Should throw at construction when a static TTL is negative", () => {
-            expect(() => new Cache(undefined, undefined, -1)).toThrow();
-        })
-
         it("Should throw at construction when a static TTL is NaN or Infinity", () => {
             expect(() => new Cache(undefined, undefined, NaN)).toThrow();
             expect(() => new Cache(undefined, undefined, Infinity)).toThrow();
@@ -84,12 +80,6 @@ describe('Caches', function() {
 
         it("Should throw when TTL function returns a non-number", async () => {
             const ttlFn = () => "not-a-number";
-            const cache = new Cache(undefined, undefined, ttlFn);
-            await expect(cache.put("Hello", "World")).rejects.toThrow();
-        })
-
-        it("Should throw when TTL function returns a negative number", async () => {
-            const ttlFn = () => -1;
             const cache = new Cache(undefined, undefined, ttlFn);
             await expect(cache.put("Hello", "World")).rejects.toThrow();
         })
