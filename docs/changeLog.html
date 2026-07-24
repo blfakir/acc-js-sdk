@@ -2,6 +2,19 @@
 layout: page
 title: Change Log
 ---
+<section class="changelog"><h1>Version 1.2.2</h1>
+  <h2>2026/07/24</h2>
+  <li>
+    Dynamic cache TTL: <code>entityCacheTTL</code>, <code>methodCacheTTL</code>, and <code>optionCacheTTL</code> connection options now also accept a function returning the TTL in milliseconds, in addition to a plain number:
+    <ul>
+      <li><code>entityCacheTTL</code>: <code>(entityType, entityFullName) =&gt; number</code>, e.g. to compute a per-namespace TTL for schemas</li>
+      <li><code>methodCacheTTL</code>: <code>(schemaId, methodName) =&gt; number</code></li>
+      <li><code>optionCacheTTL</code>: <code>(name) =&gt; number</code></li>
+    </ul>
+    Contract, for both a static value and a function's return value: a positive number is the TTL in ms, 0 disables caching for the entry, null/undefined default to 5 minutes, and a non-number value throws. Fully backward compatible — passing a plain number keeps existing behavior.
+  </li>
+</section>
+
 <section class="changelog"><h1>Version 1.2.1</h1>
   <h2>2026/05/18</h2>
   <li>
@@ -46,19 +59,6 @@ title: Change Log
   <h2>2026/04/03</h2>
   <li>
     Add enableRequestId option to connection parameters to pass the x-request-id parameter. This was passed by default and causing the SDK to be incompatible with older campaign instances
-  </li>
-</section>
-
-<section class="changelog"><h1>Version 1.1.62</h1>
-  <h2>2026/06/11</h2>
-  <li>
-    Dynamic cache TTL: <code>entityCacheTTL</code>, <code>methodCacheTTL</code>, and <code>optionCacheTTL</code> connection options now also accept a function returning the TTL in milliseconds, in addition to a plain number:
-    <ul>
-      <li><code>entityCacheTTL</code>: <code>(entityType, entityFullName) =&gt; number</code>, e.g. to compute a per-namespace TTL for schemas</li>
-      <li><code>methodCacheTTL</code>: <code>(schemaId, methodName) =&gt; number</code></li>
-      <li><code>optionCacheTTL</code>: <code>(name) =&gt; number</code></li>
-    </ul>
-    Contract, for both a static value and a function's return value: a positive number is the TTL in ms, 0 disables caching for the entry, null/undefined default to 5 minutes, and a non-number value throws. Fully backward compatible — passing a plain number keeps existing behavior.
   </li>
 </section>
 
