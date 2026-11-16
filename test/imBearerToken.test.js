@@ -164,6 +164,28 @@ describe('IMS Bearer Toekn', function () {
             expect(putSpy).not.toHaveBeenCalled();
         });
 
+        it.each([60000, () => 60000])('Should reuse cached session info on repeated logon without fetching user info: %p', async (serverInfoCacheTTL) => {
+            const client = await makeSessionInfoClient({serverInfoCacheTTL});
+            await expect(client._serverInfoCache.get("sessionInfo")).resolves.toBeUndefined();
+
+            await client.logon();
+
+            const sessionInfo = client.getSessionInfo();
+            expect(client.isLogged()).toBe(true);
+            expect(client._transport).toHaveBeenCalledTimes(2);
+            expect(client.test).toHaveBeenCalledTimes(1);
+            await expect(client._serverInfoCache.get("sessionInfo")).resolves.toEqual(sessionInfo);
+
+            client._transport.mockClear();
+            client.test.mockClear();
+            await client.logon();
+
+            expect(client.isLogged()).toBe(true);
+            expect(client.getSessionInfo()).toEqual(sessionInfo);
+            expect(client._transport).not.toHaveBeenCalled();
+            expect(client.test).not.toHaveBeenCalled();    
+        });
+
         it.each([1000, 0, null])('Should honor a numeric or null TTL: %p', async (serverInfoCacheTTL) => {
             const now = jest.spyOn(Date, "now").mockReturnValue(1000000);
             try {
@@ -175,6 +197,7 @@ describe('IMS Bearer Toekn', function () {
                 expect(cached.expiresAt - cached.cachedAt).toBe(ttl);
                 await client.logon();
                 expect(client.test).toHaveBeenCalledTimes(ttl === 0 ? 2 : 1);
+                expect(client._transport).toHaveBeenCalledTimes(ttl === 0 ? 3 : 2);
                 expect(client.application.operator.login).toBe("admin");
                 expect(client.application.packages).toContain("nms:core");
 
