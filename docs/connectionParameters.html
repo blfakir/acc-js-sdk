@@ -118,16 +118,11 @@ const connectionParameters = sdk.ConnectionParameters.ofUserAndPassword(
             <td>enableRequestIdHeader</td>
             <td>boolean</td>
             <td>Enable the request ID header for SOAP API calls</td>
-    </tr>
-    <tr>
-            <td>useServerInfoCache</td>
-            <td>boolean</td>
-            <td>Enables caching of server info and installed packages. Defaults to false</td>
         </tr>
         <tr>
-            <td>useServerInfoCacheTTL</td>
-            <td>number</td>
-            <td>The TTL (in milliseconds) for the server info cache. Defaults to 1 day</td>
+            <td>serverInfoCacheTTL</td>
+            <td>number | function</td>
+            <td>Enables caching of session information (including server info, installed packages, and user info) for IMS bearer authentication when <code>sessionInfo</code> is true. Accepts a TTL in milliseconds or a function <code>(name) =&gt; number</code>, called with <code>"sessionInfo"</code>. Omitted or <code>undefined</code> preserves the uncached behavior: session information is fetched on every logon. <code>0</code> expires entries immediately. Explicit <code>null</code>, or a function returning <code>null</code> or <code>undefined</code>, uses the shared cache default of 5 minutes. As with other caches, entries may be persisted in local storage unless <code>noStorage</code> is true. User info includes identity and rights; do not share this cache across users.</td>
         </tr>
     </tbody>
 </table>

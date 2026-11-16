@@ -38,7 +38,7 @@ describe('IMS Bearer Toekn', function () {
     });
 
     it('Should logn with IMS bearer token and save the server Info cache', async () => {
-        const client = await makeImsClient({useServerInfoCache: true, sessionInfo: true});
+        const client = await makeImsClient({serverInfoCacheTTL: 1000, sessionInfo: true});
         client._transport = jest.fn();
         const putSpy = jest.spyOn(client._serverInfoCache, "put");
         client.test = jest.fn(() => Promise.resolve({build: "8.9.1"}))
@@ -110,7 +110,7 @@ describe('IMS Bearer Toekn', function () {
         });
     })
     it ("should handle the case where the get serverInfo from cache fails", async () => {
-        const client = await makeImsClient({useServerInfoCache: true, sessionInfo: true});
+        const client = await makeImsClient({serverInfoCacheTTL: 1000, sessionInfo: true});
         client._serverInfoCache.get = jest.fn(() => Promise.reject(new Error("Cache error")));
         client._transport.mockImplementationOnce(() => {
             return Mock.GET_XTK_SESSION_SCHEMA_RESPONSE;
@@ -129,6 +129,98 @@ describe('IMS Bearer Toekn', function () {
         expect(client._serverInfoCache.get).toHaveBeenCalledWith("sessionInfo");
         expect(client._transport).toHaveBeenCalledTimes(2);
         expect(client.isLogged()).toBe(true);
+    });
+
+    describe('Server info cache TTL', () => {
+        async function makeSessionInfoClient(options) {
+            const client = await makeImsClient({
+                sessionInfo: true,
+                noStorage: true,
+                entityCacheTTL: 600000,
+                methodCacheTTL: 600000,
+                ...options
+            });
+            client.test = jest.fn().mockResolvedValue({build: "8.9.1"});
+            client._transport.mockReturnValueOnce(Mock.GET_XTK_SESSION_SCHEMA_RESPONSE);
+            client._transport.mockReturnValue(Mock.GET_USER_INFO_RESPONSE);
+            return client;
+        }
+
+        it.each([{}, {serverInfoCacheTTL: undefined}])('Should bypass caching when the TTL is undefined: %p', async (options) => {
+            const client = await makeSessionInfoClient(options);
+            await client._serverInfoCache.put("sessionInfo", {});
+            const getSpy = jest.spyOn(client._serverInfoCache, "get");
+            const putSpy = jest.spyOn(client._serverInfoCache, "put");
+
+            await client.logon();
+            await client.logon();
+
+            expect(client.isLogged()).toBe(true);
+            expect(client.application.operator.login).toBe("admin");
+            expect(client.application.packages).toContain("nms:core");
+            expect(client.test).toHaveBeenCalledTimes(2);
+            expect(client._transport).toHaveBeenCalledTimes(3);
+            expect(getSpy).not.toHaveBeenCalled();
+            expect(putSpy).not.toHaveBeenCalled();
+        });
+
+        it.each([1000, 0, null])('Should honor a numeric or null TTL: %p', async (serverInfoCacheTTL) => {
+            const now = jest.spyOn(Date, "now").mockReturnValue(1000000);
+            try {
+                const client = await makeSessionInfoClient({serverInfoCacheTTL});
+                const ttl = serverInfoCacheTTL ?? 300000;
+
+                await client.logon();
+                const cached = client._serverInfoCache._cache.sessionInfo;
+                expect(cached.expiresAt - cached.cachedAt).toBe(ttl);
+                await client.logon();
+                expect(client.test).toHaveBeenCalledTimes(ttl === 0 ? 2 : 1);
+                expect(client.application.operator.login).toBe("admin");
+                expect(client.application.packages).toContain("nms:core");
+
+                now.mockReturnValue(1000000 + ttl);
+                await client.logon();
+                expect(client.test).toHaveBeenCalledTimes(ttl === 0 ? 3 : 2);
+            } finally {
+                now.mockRestore();
+            }
+        });
+
+        it.each([1000, 0, null, undefined])('Should resolve a TTL function returning %p', async (value) => {
+            const serverInfoCacheTTL = jest.fn().mockReturnValue(value);
+            const client = await makeSessionInfoClient({serverInfoCacheTTL});
+
+            await client.logon();
+
+            const cached = client._serverInfoCache._cache.sessionInfo;
+            expect(cached.expiresAt - cached.cachedAt).toBe(value ?? 300000);
+            expect(serverInfoCacheTTL).toHaveBeenCalledTimes(1);
+            expect(serverInfoCacheTTL).toHaveBeenCalledWith("sessionInfo");
+        });
+
+        it.each([NaN, Infinity, "1000"])('Should reject an invalid static TTL: %p', async (serverInfoCacheTTL) => {
+            await expect(makeSessionInfoClient({serverInfoCacheTTL})).rejects.toThrow("Invalid TTL value");
+        });
+
+        it('Should reject an invalid TTL function result', async () => {
+            const client = await makeSessionInfoClient({serverInfoCacheTTL: () => "1000"});
+            await expect(client.logon()).rejects.toThrow("Invalid TTL value");
+        });
+
+        it('Should not fetch session info unless requested', async () => {
+            const serverInfoCacheTTL = jest.fn().mockReturnValue(1000);
+            const client = await makeImsClient({serverInfoCacheTTL});
+            const getSpy = jest.spyOn(client._serverInfoCache, "get");
+            const putSpy = jest.spyOn(client._serverInfoCache, "put");
+
+            await client.logon();
+
+            expect(client.isLogged()).toBe(true);
+            expect(client._transport).not.toHaveBeenCalled();
+            expect(serverInfoCacheTTL).not.toHaveBeenCalled();
+            expect(getSpy).not.toHaveBeenCalled();
+            expect(putSpy).not.toHaveBeenCalled();
+        });
     });
 
     // The logoff API invalidates the session created on the server side and does not invalidate 

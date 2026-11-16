@@ -66,7 +66,7 @@ describe('ACC Client', function () {
             expect(client.isLogged()).toBe(false);
         });
         it('Should logon and logoff with server info cache disabled', async () => {
-            const client = await Mock.makeClient({ useServerInfoCache: false });
+            const client = await Mock.makeClient({ serverInfoCacheTTL: undefined });
             client._transport.mockReturnValueOnce(Mock.LOGON_RESPONSE);
             client._transport.mockReturnValueOnce(Mock.LOGOFF_RESPONSE);
             await client.NLWS.xtkSession.logon();
@@ -75,7 +75,7 @@ describe('ACC Client', function () {
             expect(DomUtil.findElement(sessionInfoXml, "serverInfo", true).getAttribute("buildNumber")).toBe("9219");
         });
         it('Should logon and logoff with server info cache enabled', async () => {
-            const client = await Mock.makeClient({ useServerInfoCache: true });
+            const client = await Mock.makeClient({ serverInfoCacheTTL: 1000 });
             client._transport.mockReturnValueOnce(Mock.LOGON_RESPONSE);
             client._transport.mockReturnValueOnce(Mock.LOGOFF_RESPONSE);
             await client.NLWS.xtkSession.logon();
@@ -83,8 +83,8 @@ describe('ACC Client', function () {
             var sessionInfoXml = client.getSessionInfo("xml");
             expect(DomUtil.findElement(sessionInfoXml, "serverInfo", true).getAttribute("buildNumber")).toBe("9219");
         });
-        it('Should logon and logoff with server info cache enabled and disabled', async () => {
-            const client = await Mock.makeClient({ useServerInfoCache: true });
+        it('Should logon with a server info cache TTL function', async () => {
+            const client = await Mock.makeClient({ serverInfoCacheTTL: () => 1000 });
             client._transport.mockReturnValueOnce(Mock.LOGON_RESPONSE);
             client._transport.mockReturnValueOnce(Mock.LOGOFF_RESPONSE);
             await client.NLWS.xtkSession.logon();
@@ -2315,7 +2315,7 @@ describe('ACC Client', function () {
         })
 
         it("Should logon and logoff with server info cache enabled", async () => {
-            const connectionParameters = sdk.ConnectionParameters.ofImsBearerToken("http://acc-sdk:8080", "$token$", {useServerInfoCache: true, sessionInfo: true});
+            const connectionParameters = sdk.ConnectionParameters.ofImsBearerToken("http://acc-sdk:8080", "$token$", {serverInfoCacheTTL: 1000, sessionInfo: true});
             const client = await sdk.init(connectionParameters);
             client._transport = jest.fn();
             // Spy on the session info cache get method

@@ -297,7 +297,7 @@ governing permissions and limitations under the License.
     * @property {number|function} entityCacheTTL - The TTL (in milliseconds) after which cached XTK entities expire. Can also be a function `(entityType, entityFullName) => number` returning the TTL in ms for a given entity, allowing e.g. per-namespace TTLs for schemas. 0 means no caching, null/undefined default to 5 minutes, and a negative or non-number value throws.
     * @property {number|function} methodCacheTTL - The TTL (in milliseconds) after which cached XTK methods expire. Can also be a function `(schemaId, methodName) => number` returning the TTL in ms for a given method. 0 means no caching, null/undefined default to 5 minutes, and a negative or non-number value throws.
     * @property {number|function} optionCacheTTL - The TTL (in milliseconds) after which cached XTK options expire. Can also be a function `(name) => number` returning the TTL in ms for a given option. 0 means no caching, null/undefined default to 5 minutes, and a negative or non-number value throws.
-    * @property {number} serverInfoCacheTTL - The TTL (in milliseconds) for the server info cache. Defaults to 1 day
+    * @property {number|function} serverInfoCacheTTL - Enables caching of IMS session info when sessionInfo is true. A TTL in milliseconds or a function `(name) => number`, called with "sessionInfo". Undefined disables caching, 0 expires immediately, and null defaults to 5 minutes, as do null/undefined function results.
     * @property {boolean} traceAPICalls - Activates the tracing of all API calls
     * @property {Utils.Transport} transport - Overrides the transport (i.e. HTTP layer)
     * @property {boolean} noStorage - De-activate using of local storage. By default, and in addition to in-memory cache, entities, methods, and options are also persisted in local storage if there is one.
@@ -312,7 +312,6 @@ governing permissions and limitations under the License.
     * @property {string} cacheRootKey - "default" or "none" - determine the prefix to use for the keys in the caches of schemas, options, etc.
     * @property {string} instanceKey - an optional value to override the instance key which is used for the caches of schemas, options, etc.
     * @property {boolean} enableRequestIdHeader - an optional value to enable the request ID header for SOAP API calls
-    * @property {boolean} useServerInfoCache - Enables caching of server info and installed packages. Defaults to false
     * @memberOf Campaign
  */
 
@@ -359,8 +358,7 @@ governing permissions and limitations under the License.
       this._options.methodCacheTTL = options.methodCacheTTL ?? 1000*300; // 5 mins (or a function, see ConnectionOptions)
       this._options.optionCacheTTL = options.optionCacheTTL ?? 1000*300; // 5 mins (or a function, see ConnectionOptions)
       this._options.traceAPICalls = options.traceAPICalls === null || options.traceAPICalls ? !!options.traceAPICalls : false;
-      this._options.useServerInfoCacheTTL = options.useServerInfoCacheTTL || 1000 * 60 * 60 * 24; // 1 day
-      this._options.useServerInfoCache = options.useServerInfoCache || false;
+      this._options.serverInfoCacheTTL = options.serverInfoCacheTTL;
       this._options.transport = options.transport || request;
 
       this._endpoint = endpoint;
@@ -852,7 +850,6 @@ governing permissions and limitations under the License.
       this._secretKeyCipher = undefined;
 
       this._storage = connectionParameters._options._storage;
-      this._useServerInfoCache = connectionParameters._options.useServerInfoCache;
 
       var instanceKey = connectionParameters._options.instanceKey;
       if (!instanceKey)
@@ -882,7 +879,7 @@ governing permissions and limitations under the License.
       this._methodCache = new MethodCache(this._storage, `${rootKey}MethodCache`, connectionParameters._options.methodCacheTTL);
       this._optionCache = new OptionCache(this._storage, `${rootKey}OptionCache`, connectionParameters._options.optionCacheTTL);
       this._optionCacheRefresher = new CacheRefresher(this._optionCache, this, "xtk:option", `${rootKey}OptionCache`);
-      this._serverInfoCache = new Cache(this._storage, `${rootKey}ServerInfoCache`, connectionParameters._options.useServerInfoCacheTTL);
+      this._serverInfoCache = new Cache(this._storage, `${rootKey}ServerInfoCache`, connectionParameters._options.serverInfoCacheTTL);
       this.NLWS = new Proxy(this, clientHandler());
 
       this._transport = connectionParameters._options.transport;
@@ -1578,7 +1575,7 @@ governing permissions and limitations under the License.
     }
 
     async _fetchSessionInfo() {
-      if (this._useServerInfoCache) {
+      if (this._connectionParameters._options.serverInfoCacheTTL !== undefined) {
         try {
           const sessionInfoJson = await this._serverInfoCache.get("sessionInfo");
           if (sessionInfoJson) {
@@ -1618,7 +1615,7 @@ governing permissions and limitations under the License.
       if (!buildNumber)
         throw CampaignException.UNEXPECTED_SOAP_RESPONSE(undefined, `buildNumber structure missing for both /r/test and NmsServer_LastPostUpgrade option`);
       serverInfo.setAttribute("buildNumber", buildNumber);
-      if (this._useServerInfoCache) {
+      if (this._connectionParameters._options.serverInfoCacheTTL !== undefined) {
         const sessionInfoJson = DomUtil.toJSON(sessionInfo, "SimpleJson");
         await this._serverInfoCache.put("sessionInfo", sessionInfoJson);
       }
